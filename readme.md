@@ -107,3 +107,18 @@ The sidecar is now running natively, safely querying Windows metrics, and ready 
 * Recommended Next Step: Copy the three files to C:\inetpub\HealthCheckSidecar, install the .NET Hosting Bundle, and use port 8080 for the IIS binding.
 
 * Watch Out For: Make sure Windows Defender/Windows Firewall allows incoming traffic on port 8080 only from the BIG-IP self-IP addresses.
+
+## Monitor with BIG-IP
+When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your modern health check sidecar is hosted on port 8080, you must configure the BIG-IP health monitor to use a feature called an Alias Service Port.  This tells the BIG-IP: *"Send production client traffic to the server on port 80/443, but always send the health probes to that same server on port 8080."*
+
+Follow these steps to create the custom port-redirected monitor and apply it to your existing production pool.
+
+### Step 1: Create the Custom Port 8080 Monitor
+    1. Log in to the BIG-IP Configuration Utility (GUI).
+    2.Navigate on the left menu to: Local Traffic ➡️ Monitors.
+    3. Click the Create... button in the upper-right corner.
+    4. Configure the settings precisely as follows:
+![Monitor settings](settings.png)
+
+    5. Leave Alias Address set to the default wildcard (* All Addresses). This ensures the monitor automatically targets the unique IP address of whichever pool member it is currently checking 
+    6. Click Finished to save the monitor.
