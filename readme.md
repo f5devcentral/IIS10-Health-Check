@@ -20,11 +20,11 @@ Create a folder on your Windows Server where the application will live. For exam
 
 Inside that directory, create three files with the exact names and contents provided below:
 
-📄 File 1: web.config
+📄 File 1: [web.config](web.config)
 This file tells IIS 10 how to execute and pass web traffic to the modern .NET application.
 
 
-📄 File 2: appsettings.json
+📄 File 2: [appsettings.json](appsettings.json)
 This controls the configuration of the application. Here, you can easily change your target CPU and Memory thresholds.
 
 📄 File 3: HealthCheckSidecar.dll (Conceptual Note)
