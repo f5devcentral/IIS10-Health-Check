@@ -119,6 +119,5 @@ Follow these steps to create the custom port-redirected monitor and apply it to 
     3. Click the Create... button in the upper-right corner.
     4. Configure the settings precisely as follows:
 ![Monitor settings](settings.png)
-
     5. Leave Alias Address set to the default wildcard (* All Addresses). This ensures the monitor automatically targets the unique IP address of whichever pool member it is currently checking 
     6. Click Finished to save the monitor.
