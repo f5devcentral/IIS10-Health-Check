@@ -34,11 +34,12 @@ Note: In a typical development pipeline, the C# code we discussed previously is 
 ### Step 2: Configure the Sidecar Site in IIS 10
 Now, we will map that folder to a brand-new website inside IIS.
 
+```mermaid
 graph TD
     A[Open IIS Manager] --> B[Create App Pool: AlwaysRunning]
     B --> C[Add Website on Port 8080]
     C --> D[Point Physical Path to C:\inetpub\HealthCheckSidecar]
-
+```
 #### 1. Create a Dedicated Application Pool
 Using a dedicated pool isolates the sidecar so it cannot impact your primary application.
 
