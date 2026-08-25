@@ -134,7 +134,22 @@ Next, bind this new monitor to your production application pool.
 
 #### How This Works Behind the Scenes
 Now, the BIG-IP manages traffic routing through two distinct port channels:
-<iframe src="https://mermaid.live/embed?theme=dark&look=classic&mode=dark#pako:eNp1kk1PwzAMhv-KldOQNtaNVZp6QIKhsQkhKjYuqJcs9dpobTxcF4QQ_5107UB85eDIyes3T-K8KUMpqkhV-FSjM3hldca6TBz4oWshV5cb5C43QgyzwqKTdmWvWayxe-0E5iHoqomXy-vBMv4tWC5XjaKZRgGskJ-Pxm1kNAKcbXrjSdCH8WTqQxietJuOBIFtlgvQ1p8SwYUR-4xwS856LOsymOXaOSzagnk4OD_3Z30KF6gLySFm2iD0YmKBaTANOn-vHPiCxnixXsfD0ekIxkEAdzfQm8UPw1ssO4fXrgJdmrg_ycOwwQ_-JfcIae2hyMGa9XZrzXf09oU7mvumM5XAysoX9nAyOTv5ec858YvmFAx5q9ZeCGKiAjy97-Jf5YdbqL7K2KYqEq6xr0rkUjepekuU5FhioqJEpZp3ieonqiDaHVZMoavKmkS9ewff40ei8mjCVGe5ira6qHxW71Mtx9_VSt4_ABCVxMU" width="100%" height="480" style="border:0" loading="lazy" title="Mermaid diagram" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant F5 as F5 BIG-IP
+    participant IIS as IIS 10 Server
+    
+    rect rgb(240, 248, 255)
+    note right of F5: Active Monitoring Channel
+    F5->>IIS: Active Health Probe (Port 8080)
+    IIS-->>F5: HTTP/1.1 200 OK (CPU/Mem Healthy)
+    end
 
-
-
+    rect rgb(240, 255, 240)
+    note right of F5: Production Traffic Channel
+    Client->>F5: Request Site (Port 80/443)
+    F5->>IIS: Forward connection to Pool Member (Port 80/443)
+    end
+```
