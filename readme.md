@@ -129,5 +129,12 @@ Next, bind this new monitor to your production application pool.
     1. Navigate to: Local Traffic ➡️ Pools ➡️ Pool List.
     2. Click on your active web application pool (the pool containing your IIS members listening on Port 80 or 443).
     3. On the Properties tab, locate the Health Monitors section.
-    4. In the Available list, select your new *mon_iis10_sidecar_8080* monitor and click the << (Add) button to move it into the Active list.
+    4. In the Available list, select your new mon_iis10_sidecar_8080 monitor and click the << (Add) button to move it into the Active list.
     5. Click Update at the bottom of the page.
+
+#### How This Works Behind the Scenes
+Now, the BIG-IP manages traffic routing through two distinct port channels:
+<iframe src="https://mermaid.live/embed?theme=dark&look=classic&mode=dark#pako:eNp1kk1PwzAMhv-KldOQNtaNVZp6QIKhsQkhKjYuqJcs9dpobTxcF4QQ_5107UB85eDIyes3T-K8KUMpqkhV-FSjM3hldca6TBz4oWshV5cb5C43QgyzwqKTdmWvWayxe-0E5iHoqomXy-vBMv4tWC5XjaKZRgGskJ-Pxm1kNAKcbXrjSdCH8WTqQxietJuOBIFtlgvQ1p8SwYUR-4xwS856LOsymOXaOSzagnk4OD_3Z30KF6gLySFm2iD0YmKBaTANOn-vHPiCxnixXsfD0ekIxkEAdzfQm8UPw1ssO4fXrgJdmrg_ycOwwQ_-JfcIae2hyMGa9XZrzXf09oU7mvumM5XAysoX9nAyOTv5ec858YvmFAx5q9ZeCGKiAjy97-Jf5YdbqL7K2KYqEq6xr0rkUjepekuU5FhioqJEpZp3ieonqiDaHVZMoavKmkS9ewff40ei8mjCVGe5ira6qHxW71Mtx9_VSt4_ABCVxMU" width="100%" height="480" style="border:0" loading="lazy" title="Mermaid diagram" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+
+
+
