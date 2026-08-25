@@ -154,3 +154,8 @@ sequenceDiagram
     F5->>IIS: Forward connection to Pool Member (Port 80/443)
     end
 ```
+If the CPU spikes above your configured threshold, the following occurs:
+
+    1.The ASP.NET background service registers the high load.
+    2.The next active probe on Port 8080 receives an HTTP/1.1 503 Service Unavailable response.
+    3.The BIG-IP marks that pool member's production port (Port 80/443) as down, immediately stopping client traffic from hitting the overloaded server—even though the actual web services are still online and listening.
