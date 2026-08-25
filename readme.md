@@ -119,5 +119,15 @@ Follow these steps to create the custom port-redirected monitor and apply it to 
     3. Click the Create... button in the upper-right corner.
     4. Configure the settings precisely as follows:
 ![Monitor settings](settings.png)
+
     5. Leave Alias Address set to the default wildcard (* All Addresses). This ensures the monitor automatically targets the unique IP address of whichever pool member it is currently checking 
     6. Click Finished to save the monitor.
+
+### Step 2: Apply the Monitor to Your Existing Pool
+Next, bind this new monitor to your production application pool.
+
+    1. Navigate to: Local Traffic ➡️ Pools ➡️ Pool List.
+    2. Click on your active web application pool (the pool containing your IIS members listening on Port 80 or 443).
+    3. On the Properties tab, locate the Health Monitors section.
+    4. In the Available list, select your new *mon_iis10_sidecar_8080* monitor and click the << (Add) button to move it into the Active list.
+    5. Click Update at the bottom of the page.
