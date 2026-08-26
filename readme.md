@@ -1,140 +1,152 @@
-# Configure IIS10 Health Checks
+# IIS 10 Health Check Sidecar (.NET 8 Web API)
+
+A lightweight, self-contained **ASP.NET Core (.NET 8) Web API** sidecar application designed to monitor Windows Server CPU and memory metrics in real-time and provide endpoint status probes (`/api/health`) for load balancers such as **F5 BIG-IP**.
+
+---
 
 ## Prerequisites (What to Install First)
-Before starting, we need to make sure your Windows Server has the correct runtime tools installed so it can run modern web apps.
 
-### Install the .NET 8 Hosting Bundle:
+Before starting, ensure your Windows Server has the required runtime installed so IIS can run ASP.NET Core applications.
 
-Go to the official Microsoft .NET download page.
+### 1. Install the .NET 8 Hosting Bundle
+1. Go to Microsoft's download page for the [.NET 8.0 Hosting Bundle](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
+2. Download and run the installer (includes the ASP.NET Core Runtime and the `AspNetCoreModuleV2` for IIS).
 
-Download and install the [.NET 8.0 Hosting Bundle](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) (this includes both the .NET Runtime and the IIS IIS Out-Of-Process hosting module).
+### 2. Restart IIS
+Open Command Prompt (CMD) as Administrator and execute:
+```cmd
+iisreset
+```
 
-### Restart IIS:
+---
 
-Open your Command Prompt (CMD) as Administrator and type iisreset to ensure IIS registers the new .NET Core module.
+## Repository Architecture & Code Structure
 
-## Step 1: Download & Place the "Sidecar" Application Files
-We have pre-packaged a complete, self-contained health-check application for you.
+```
+├── HealthCheckSidecar.csproj    # .NET 8 Web API Project File
+├── Program.cs                   # Application entrypoint & health routes (/api/health)
+├── Models/
+│   └── HealthOptions.cs         # Strong-typed threshold settings
+├── Services/
+│   └── MetricsCollectorService.cs # Background service sampling live CPU & Memory
+├── appsettings.json             # Resource threshold configuration
+├── web.config                   # IIS AspNetCoreModuleV2 handler configuration
+├── health.asp                   # Classic ASP legacy reference script
+└── readme.md                    # Documentation
+```
 
-Create a folder on your Windows Server where the application will live. For example: C:\inetpub\HealthCheckSidecar
+---
 
-Inside that directory, create three files with the exact names and contents provided below:
+## Build & Publish
 
-📄 File 1: [web.config](web.config)
-This file tells IIS 10 how to execute and pass web traffic to the modern .NET application.
+To compile and publish the sidecar application for deployment:
 
+1. Clone or download this repository.
+2. Open a Command Prompt or Terminal in the repository folder.
+3. Run the publish command:
+   ```cmd
+   dotnet publish -c Release -o C:\inetpub\HealthCheckSidecar
+   ```
+This compiles `HealthCheckSidecar.dll` and outputs all required runtime assets to `C:\inetpub\HealthCheckSidecar`.
 
-📄 File 2: [appsettings.json](appsettings.json)
-This controls the configuration of the application. Here, you can easily change your target CPU and Memory thresholds.
+---
 
-📄 File 3: HealthCheckSidecar.dll (Conceptual Note)
-Note: In a typical development pipeline, the C# code we discussed previously is compiled into a .dll binary using Microsoft Visual Studio or the dotnet command-line interface. For a rapid PoV deployment, you can compiled this by running the following command in a command prompt inside an empty folder on any computer with the dotnet SDK installed:
-`dotnet new webapi -n HealthCheckSidecar` (Replace the boilerplate with our code, and run dotnet publish -c Release -o C:\inetpub\HealthCheckSidecar).
+## Step 1: Configuration (`appsettings.json`)
 
-### Step 2: Configure the Sidecar Site in IIS 10
-Now, we will map that folder to a brand-new website inside IIS.
+Edit `appsettings.json` in your deployment directory to customize resource thresholds:
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "HealthThresholds": {
+    "MaxCpuPercentage": 85.0,
+    "MaxMemoryPercentage": 90.0,
+    "TotalSystemRamGb": 16.0
+  }
+}
+```
+
+* **MaxCpuPercentage**: HTTP 503 is returned if server CPU usage exceeds this threshold (e.g. `85.0`%).
+* **MaxMemoryPercentage**: HTTP 503 is returned if server Memory usage exceeds this threshold (e.g. `90.0`%).
+
+---
+
+## Step 2: Configure the Sidecar Site in IIS 10
 
 ```mermaid
 graph TD
-    A[Open IIS Manager] --> B[Create App Pool: AlwaysRunning]
-    B --> C[Add Website on Port 8080]
-    C --> D[Point Physical Path to C:\inetpub\HealthCheckSidecar]
+    A[Open IIS Manager] --> B[Create App Pool: HealthCheckPool]
+    B --> C[Set CLR to No Managed Code]
+    C --> D[Set AlwaysRunning & Idle Timeout 0]
+    D --> E[Add Website on Port 8080]
+    E --> F[Point Physical Path to C:\inetpub\HealthCheckSidecar]
 ```
-#### 1. Create a Dedicated Application Pool
-Using a dedicated pool isolates the sidecar so it cannot impact your primary application.
 
-    1. Open IIS Manager (type inetmgr in your Windows search bar).
+### 1. Create a Dedicated Application Pool
+1. Open IIS Manager (`inetmgr`).
+2. Right-click **Application Pools** -> **Add Application Pool...**
+3. Name: `HealthCheckPool`
+4. Set **.NET CLR version** to **No Managed Code** (required for ASP.NET Core In-Process hosting).
+5. Click **OK**.
+6. Select `HealthCheckPool`, click **Advanced Settings...**:
+   * Change **Start Mode** from `OnDemand` to `AlwaysRunning`.
+   * Change **Idle Time-out (minutes)** from `20` to `0`.
+7. Click **OK**.
 
-    2. Right-click on Application Pools in the left connections tree and select Add Application Pool....
+### 2. Create the Website
+1. Right-click **Sites** -> **Add Website...**
+2. **Site name:** `HealthCheckSidecar`
+3. **Application pool:** `HealthCheckPool`
+4. **Physical path:** `C:\inetpub\HealthCheckSidecar`
+5. **Binding:** Set Port to `8080` (or your dedicated management port).
+6. Click **OK**.
 
-    3. Name it HealthCheckPool.
+---
 
-    4. Set the .NET CLR version to No Managed Code (this is correct for modern .NET Core/8 apps!).
+## Step 3: Test and Verify Locally
 
-    5. Click OK.
+1. Open a browser on the server or run `curl`:
+   ```bash
+   curl -i http://localhost:8080/api/health
+   ```
+2. Response when Healthy (`HTTP 200 OK`):
+   ```json
+   {
+       "status": "Healthy",
+       "cpu": "12.4%",
+       "memory": "48.2%"
+   }
+   ```
+3. If CPU or Memory exceeds thresholds, the endpoint automatically returns `HTTP 503 Service Unavailable`:
+   ```json
+   {
+       "status": "Unhealthy",
+       "cpu": "89.1%",
+       "memory": "48.2%"
+   }
+   ```
 
-    6. Select your new HealthCheckPool from the list, and click Advanced Settings... on the right side.
+---
 
-    7. Change the Start Mode from OnDemand to AlwaysRunning.
+## Step 4: Secure the Endpoint for F5 BIG-IP Only
 
-    8. Set the Idle Time-out (minutes) from 20 to 0. Click OK.
+1. In IIS Manager, select `HealthCheckSidecar`.
+2. Double-click **IP Address and Domain Restrictions**.
+3. Click **Add Allow Entry...** and add your BIG-IP Self-IP addresses.
+4. Click **Edit Feature Settings...** and set **Access for unspecified clients** to `Forbidden` or `Abort`.
 
-#### 2. Create the Website
-    1. Right-click on Sites in the left connections tree and select Add Website....
-
-    2. **Site name:** HealthCheckSidecar
-
-    3. **Application pool:** Select HealthCheckPool (which we just created).
-
-    4. **Physical path:** Browse to and select C:\inetpub\HealthCheckSidecar.
-
-    5. **Binding:** Change the Port to a custom port that isn't being used by your production site, such as 8080.
-
-    6. Click OK.
-
-### Step 3: Test and Verify Locally
-Let's make sure the site is up and actively reading your server's hardware.
-
-    1. Open a browser on the server and navigate to: http://localhost:8080/api/health
-
-    2. You should immediately see a JSON response displaying your live resource metrics:
-            {
-                "status": "Healthy",
-                "cpu": "12.4%",
-                "memory": "48.2%"
-            }
-    
-    3. To test your threshold, you can artificially stress your CPU or adjust the limit downward to 1.0% in appsettings.json and recycle the IIS pool. The response will immediately transition to an HTTP 503 (Service Unavailable) state.
-
-### Step 4: Secure the Endpoint for F5 BIG-IP Only
-Because Port 8080 is now exposing CPU metrics, we want to block the public from hitting it.
-
-    1. In IIS Manager, select your HealthCheckSidecar website on the left.
-
-    2. In the center pane, double-click IP Address and Domain Restrictions.
-
-    3. In the right actions pane, click **Add Allow Entry....**
-
-    4. Add the Self-IP of your BIG-IP active and standby devices (or the subnet they reside on).
-
-    5. Click **Edit Feature Settings...** in the right actions pane.
-
-    6. Under Access for unspecified clients, select Abort or Forbidden and click OK.
-
-The sidecar is now running natively, safely querying Windows metrics, and ready to signal your BIG-IP!
-
-## Recommended Action Summary
-
-* Recommended Next Step: Copy the three files to C:\inetpub\HealthCheckSidecar, install the .NET Hosting Bundle, and use port 8080 for the IIS binding.
-
-* Watch Out For: Make sure Windows Defender/Windows Firewall allows incoming traffic on port 8080 only from the BIG-IP self-IP addresses.
+---
 
 ## Monitor with BIG-IP
-When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your modern health check sidecar is hosted on port 8080, you must configure the BIG-IP health monitor to use a feature called an Alias Service Port.  This tells the BIG-IP: *"Send production client traffic to the server on port 80/443, but always send the health probes to that same server on port 8080."*
 
-Follow these steps to create the custom port-redirected monitor and apply it to your existing production pool.
+Configure an **Alias Service Port** (`8080`) monitor on BIG-IP:
 
-### Step 1: Create the Custom Port 8080 Monitor
-    1. Log in to the BIG-IP Configuration Utility (GUI).
-    2.Navigate on the left menu to: Local Traffic ➡️ Monitors.
-    3. Click the Create... button in the upper-right corner.
-    4. Configure the settings precisely as follows:
-![Monitor settings](settings.png)
-
-    5. Leave Alias Address set to the default wildcard (* All Addresses). This ensures the monitor automatically targets the unique IP address of whichever pool member it is currently checking 
-    6. Click Finished to save the monitor.
-
-### Step 2: Apply the Monitor to Your Existing Pool
-Next, bind this new monitor to your production application pool.
-
-    1. Navigate to: Local Traffic ➡️ Pools ➡️ Pool List.
-    2. Click on your active web application pool (the pool containing your IIS members listening on Port 80 or 443).
-    3. On the Properties tab, locate the Health Monitors section.
-    4. In the Available list, select your new mon_iis10_sidecar_8080 monitor and click the << (Add) button to move it into the Active list.
-    5. Click Update at the bottom of the page.
-
-#### How This Works Behind the Scenes
-Now, the BIG-IP manages traffic routing through two distinct port channels:
 ```mermaid
 sequenceDiagram
     autonumber
@@ -144,8 +156,8 @@ sequenceDiagram
     
     rect rgb(240, 248, 255)
     note right of F5: Active Monitoring Channel
-    F5->>IIS: Active Health Probe (Port 8080)
-    IIS-->>F5: HTTP/1.1 200 OK (CPU/Mem Healthy)
+    F5->>IIS: Health Probe (Port 8080 GET /api/health)
+    IIS-->>F5: HTTP/1.1 200 OK (Healthy)
     end
 
     rect rgb(240, 255, 240)
@@ -154,8 +166,8 @@ sequenceDiagram
     F5->>IIS: Forward connection to Pool Member (Port 80/443)
     end
 ```
-If the CPU spikes above your configured threshold, the following occurs:
 
-    1.The ASP.NET background service registers the high load.
-    2.The next active probe on Port 8080 receives an HTTP/1.1 503 Service Unavailable response.
-    3.The BIG-IP marks that pool member's production port (Port 80/443) as down, immediately stopping client traffic from hitting the overloaded server—even though the actual web services are still online and listening.
+If the CPU or Memory threshold is breached:
+1. The background service registers the high resource consumption.
+2. The probe on Port `8080` receives `HTTP/1.1 503 Service Unavailable`.
+3. BIG-IP marks the pool member down and reroutes production traffic away from the overloaded server.
