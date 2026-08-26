@@ -7,7 +7,7 @@ Before starting, we need to make sure your Windows Server has the correct runtim
 
 Go to the official Microsoft .NET download page.
 
-Download and install the .NET 8.0 Hosting Bundle (this includes both the .NET Runtime and the IIS IIS Out-Of-Process hosting module).
+Download and install the [.NET 8.0 Hosting Bundle](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) (this includes both the .NET Runtime and the IIS IIS Out-Of-Process hosting module).
 
 ### Restart IIS:
 
