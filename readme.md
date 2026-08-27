@@ -10,13 +10,18 @@ Before starting, ensure your Windows Server has the required runtime installed s
 
 ### 1. Install the .NET 8 Hosting Bundle
 1. Go to Microsoft's download page for the [.NET 8.0 Hosting Bundle](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
-2. Download and run the installer (includes the ASP.NET Core Runtime and the `AspNetCoreModuleV2` for IIS).
+2. Download and run the installer (includes the ASP.NET Core Runtime and the native `AspNetCoreModuleV2` for IIS).
+
+> [!IMPORTANT]
+> You **must** install the **Hosting Bundle**, not just the .NET SDK or .NET Runtime alone. The Hosting Bundle registers the `AspNetCoreModuleV2` module into IIS schema.
 
 ### 2. Restart IIS
 Open Command Prompt (CMD) as Administrator and execute:
 ```cmd
-iisreset
+net stop was /y
+net start w3svc
 ```
+*(or run `iisreset`)*
 
 ---
 
@@ -140,6 +145,37 @@ graph TD
 2. Double-click **IP Address and Domain Restrictions**.
 3. Click **Add Allow Entry...** and add your BIG-IP Self-IP addresses.
 4. Click **Edit Feature Settings...** and set **Access for unspecified clients** to `Forbidden` or `Abort`.
+
+---
+
+## Troubleshooting Guide
+
+### ❌ `HTTP Error 500.19 - Internal Server Error` (Error Code `0x8007000d`)
+
+```text
+Module: IIS Web Core
+Error Code: 0x8007000d
+Config File: \\?\C:\inetpub\HealthCheckSidecar\web.config
+```
+
+#### Cause
+Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recognize the `<aspNetCore>` section in `web.config`. This happens when the **.NET Core Hosting Bundle** (`AspNetCoreModuleV2`) is not installed on the Windows Server, or IIS was not restarted after installation.
+
+#### Resolution Steps
+1. **Install .NET Core Hosting Bundle**:
+   - Download and run the [.NET 8.0 Hosting Bundle Installer](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
+2. **Restart IIS Services**:
+   - Open Command Prompt as Administrator and run:
+     ```cmd
+     net stop was /y
+     net start w3svc
+     ```
+3. **Verify Module Registration**:
+   - Open PowerShell as Administrator and run:
+     ```powershell
+     Get-WebGlobalModule | Where-Object { $_.Name -eq "AspNetCoreModuleV2" }
+     ```
+   - If registered, refresh the site in IIS Manager. The 500.19 error will be resolved.
 
 ---
 
