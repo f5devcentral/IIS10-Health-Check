@@ -227,11 +227,11 @@ Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recog
 
 ## Monitor with BIG-IP
 
-When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your health check sidecar is hosted on port 8080 (or your chosen custom port), you configure the BIG-IP health monitor using an **Alias Service Port**. 
+When your backend application servers run on web ports (such as HTTP 80, HTTPS 443, or a custom application port), but your health check sidecar is hosted on port 8080 (or your chosen custom management port), you configure the BIG-IP health monitor using an **Alias Service Port**. 
 
 For complete end-to-end reliability, it is recommended to use a **Dual-Monitor Strategy** on BIG-IP:
-* **Sidecar Probe (Port 8080)**: Monitors OS-level CPU and RAM performance.
-* **Application Probe (Port 80/443)**: Probes the actual web application endpoint to verify application layer health.
+* **Sidecar Probe (Port 8080 or custom sidecar port)**: Monitors OS-level CPU and RAM performance.
+* **Application Probe (Port 80, 443, or custom application port)**: Probes the actual web application endpoint to verify application layer health.
 
 ```mermaid
 sequenceDiagram
@@ -242,16 +242,16 @@ sequenceDiagram
     
     rect rgb(240, 248, 255)
     note right of F5: Active Monitoring Channel (Dual Probes)
-    F5->>IIS: Probe 1: OS Resource Probe (Port 8080 GET /api/health)
+    F5->>IIS: Probe 1: OS Resource Probe (Sidecar Port e.g. 8080 GET /api/health)
     IIS-->>F5: HTTP/1.1 200 OK (CPU & Memory Healthy)
-    F5->>IIS: Probe 2: Web Application Probe (Port 80/443 GET /)
+    F5->>IIS: Probe 2: Web Application Probe (App Port e.g. 80/443/custom GET /)
     IIS-->>F5: HTTP/1.1 200 OK (Application Layer Healthy)
     end
 
     rect rgb(240, 255, 240)
     note right of F5: Production Traffic Channel
-    Client->>F5: Request Site (Port 80/443)
-    F5->>IIS: Forward connection to Pool Member (Port 80/443)
+    Client->>F5: Request Site (App Port e.g. 80/443/custom)
+    F5->>IIS: Forward connection to Pool Member (App Port e.g. 80/443/custom)
     end
 ```
 
@@ -279,13 +279,13 @@ sequenceDiagram
 > [!TIP]
 > **Best Practice — Recommended Dual-Monitor Strategy**:
 > Combining the IIS Health Check sidecar monitor with a standard application health monitor ensures complete coverage:
-> 1. **Server OS Health Monitor** (`mon_iis10_sidecar_8080`): Ensures the Windows Server host has sufficient CPU and RAM headroom.
-> 2. **Application Health Monitor** (`mon_http_app` / `mon_https_app`): Ensures the web application on Port 80/443 is active, responsive, and serving healthy HTTP responses.
+> 1. **Server OS Health Monitor** (`mon_iis10_sidecar_8080`): Ensures the Windows Server host has sufficient CPU and RAM headroom (probed via the sidecar port, e.g., `8080`).
+> 2. **Application Health Monitor** (`mon_http_app` / `mon_https_app`): Ensures the web application itself is active and serving healthy responses on its primary application port — whether standard HTTP (`80`), HTTPS (`443`), or a custom application port (`8080`, `8443`, `5000`, etc.).
 >
 > Requiring **both** monitors to pass guarantees client traffic is routed only to servers that are both **physically healthy** and **functionally healthy**.
 
 1. Navigate in BIG-IP to: **Local Traffic** ➡️ **Pools** ➡️ **Pool List**.
-2. Click on your active web application pool (containing your IIS members listening on Port 80 or 443).
+2. Click on your active web application pool (containing your IIS members listening on Port 80, 443, or your application port).
 3. On the **Properties** tab, locate the **Health Monitors** section.
 4. In the **Available** list, select **both** monitors:
    * `mon_iis10_sidecar_8080` (OS CPU/RAM sidecar monitor)
@@ -300,6 +300,6 @@ sequenceDiagram
 
 When utilizing dual health monitors on a BIG-IP pool member:
 
-* **Resource Threshold Breach (High CPU/RAM)**: The sidecar probe on Port `8080` receives `HTTP 503 Service Unavailable`. BIG-IP marks the member down, protecting the server from crashing under load spikes.
-* **Application Failure (App Crash / DB Down)**: The application probe on Port `80/443` receives an `HTTP 50x` error or connection timeout. BIG-IP marks the member down, preventing users from experiencing broken application pages.
+* **Resource Threshold Breach (High CPU/RAM)**: The sidecar probe on Port `8080` (or custom sidecar port) receives `HTTP 503 Service Unavailable`. BIG-IP marks the member down, protecting the server from crashing under load spikes.
+* **Application Failure (App Crash / DB Down)**: The application probe on the application port (e.g., `80`, `443`, or custom app port) receives an `HTTP 50x` error or connection timeout. BIG-IP marks the member down, preventing users from experiencing broken application pages.
 * **Member Health Standard**: Production traffic is forwarded to a pool member **only when both probes pass** (`HTTP 200 OK`), providing complete end-to-end fault tolerance.
