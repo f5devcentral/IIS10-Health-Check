@@ -4,7 +4,31 @@ A lightweight, high-performance **ASP.NET Core (.NET 8) Web API** sidecar applic
 
 ---
 
-## Executive Overview
+## Table of Contents
+
+- [Solution Overview](#solution-overview)
+  - [What It Is](#-what-it-is)
+  - [Why It Is Needed](#-why-it-is-needed)
+  - [How It Works](#%EF%B8%8F-how-it-works)
+  - [Monitored Metrics](#-monitored-metrics)
+- [Prerequisites (What to Install First)](#prerequisites-what-to-install-first)
+  - [1. IIS Server Role Features](#1-iis-server-role-features)
+  - [2. Install the .NET 8 Hosting Bundle](#2-install-the-net-8-hosting-bundle)
+  - [3. Restart IIS Services](#3-restart-iis-services)
+- [Repository Architecture & Code Structure](#repository-architecture--code-structure)
+- [Build & Publish](#build--publish)
+- [Step 1: Configuration (`appsettings.json`)](#step-1-configuration-appsettingsjson)
+- [Step 2: Configure the Sidecar Site in IIS 10](#step-2-configure-the-sidecar-site-in-iis-10)
+- [Step 3: Test and Verify Locally](#step-3-test-and-verify-locally)
+- [Step 4: Secure the Endpoint for F5 BIG-IP Only](#step-4-secure-the-endpoint-for-f5-big-ip-only)
+- [Troubleshooting Guide](#troubleshooting-guide)
+- [Monitor with BIG-IP](#monitor-with-big-ip)
+  - [Step-by-Step BIG-IP Health Monitor Setup](#step-by-step-big-ip-health-monitor-setup)
+  - [Failover & Outage Behavior](#failover--outage-behavior)
+
+---
+
+## Solution Overview
 
 ### 💡 What It Is
 The **IIS 10 Health Check Sidecar** is a dedicated management microservice hosted alongside your production IIS web applications (typically bound to an isolated management port such as `8080`). It exposes clean HTTP status endpoints (`200 OK` vs. `503 Service Unavailable`) and structured JSON health metrics designed specifically for F5 BIG-IP LTM health monitors.
@@ -42,30 +66,6 @@ Administrators can independently enable, disable, and configure thresholds for t
 * 🚦 **IIS Request Queue Length (`MaxQueueLength`)**:
   * **How it works**: Queries the Windows Performance Counter (`HTTP Service Request Queues\CurrentQueueSize`) for your application's IIS AppPool to measure requests queued in `http.sys`.
   * **Default Threshold**: `50` max queued requests.
-
----
-
-## Table of Contents
-
-- [Executive Overview](#executive-overview)
-  - [What It Is](#-what-it-is)
-  - [Why It Is Needed](#-why-it-is-needed)
-  - [How It Works](#%EF%B8%8F-how-it-works)
-  - [Monitored Metrics](#-monitored-metrics)
-- [Prerequisites (What to Install First)](#prerequisites-what-to-install-first)
-  - [1. IIS Server Role Features](#1-iis-server-role-features)
-  - [2. Install the .NET 8 Hosting Bundle](#2-install-the-net-8-hosting-bundle)
-  - [3. Restart IIS Services](#3-restart-iis-services)
-- [Repository Architecture & Code Structure](#repository-architecture--code-structure)
-- [Build & Publish](#build--publish)
-- [Step 1: Configuration (`appsettings.json`)](#step-1-configuration-appsettingsjson)
-- [Step 2: Configure the Sidecar Site in IIS 10](#step-2-configure-the-sidecar-site-in-iis-10)
-- [Step 3: Test and Verify Locally](#step-3-test-and-verify-locally)
-- [Step 4: Secure the Endpoint for F5 BIG-IP Only](#step-4-secure-the-endpoint-for-f5-big-ip-only)
-- [Troubleshooting Guide](#troubleshooting-guide)
-- [Monitor with BIG-IP](#monitor-with-big-ip)
-  - [Step-by-Step BIG-IP Health Monitor Setup](#step-by-step-big-ip-health-monitor-setup)
-  - [Failover & Outage Behavior](#failover--outage-behavior)
 
 ---
 
