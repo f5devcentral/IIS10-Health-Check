@@ -6,17 +6,41 @@ A lightweight, self-contained **ASP.NET Core (.NET 8) Web API** sidecar applicat
 
 ## Prerequisites (What to Install First)
 
-Before starting, ensure your Windows Server has the required runtime installed so IIS can run ASP.NET Core applications.
+Before starting, ensure your Windows Server has the required IIS Role Features and .NET runtime installed.
 
-### 1. Install the .NET 8 Hosting Bundle
-1. Go to Microsoft's download page for the [.NET 8.0 Hosting Bundle](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
-2. Download and run the installer (includes the ASP.NET Core Runtime and the native `AspNetCoreModuleV2` for IIS).
+### 1. IIS Server Role Features
+
+Ensure the following IIS features are installed via **Server Manager** or **PowerShell**:
+
+| Feature Category | IIS Feature Name (`WindowsFeature`) | Status | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Web Server Core** | `Web-Server`, `Web-WebServer` | **Required** | Core IIS 10 HTTP hosting engine. |
+| **App Development** | `Web-ISAPI-Ext`, `Web-ISAPI-Filter` | **Required** | Native module handlers required by `AspNetCoreModuleV2`. |
+| **Web Security** | `Web-IP-Security` (*IP and Domain Restrictions*) | **Recommended** | Restricts Port 8080 access strictly to F5 BIG-IP Self-IP addresses. |
+| **Web Security** | `Web-Filtering` (*Request Filtering*) | **Recommended** | Restricts unneeded HTTP verbs and dangerous request payloads. |
+| **Diagnostics** | `Web-Http-Logging`, `Web-Http-Errors` | **Recommended** | Standard HTTP error handling and request logging. |
+| **Management** | `Web-Mgmt-Console` (*IIS Management Console*) | **Recommended** | GUI management console (`inetmgr`). |
+
+#### 🚀 Quick Installation via PowerShell
+To install all required and recommended IIS features at once, open **PowerShell as Administrator** and run:
+
+```powershell
+Install-WindowsFeature -Name Web-Server, Web-WebServer, Web-Common-Http, Web-Default-Doc, Web-Http-Errors, Web-Static-Content, Web-Health, Web-Http-Logging, Web-Performance, Web-Stat-Compress, Web-Security, Web-Filtering, Web-IP-Security, Web-Mgmt-Console -IncludeManagementTools
+```
+
+---
+
+### 2. Install the .NET 8 Hosting Bundle
+1. Download the [.NET 8.0 Hosting Bundle Installer](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
+2. Run `dotnet-hosting-8.0.x-win.exe` on the Windows Server.
 
 > [!IMPORTANT]
-> You **must** install the **Hosting Bundle**, not just the .NET SDK or .NET Runtime alone. The Hosting Bundle registers the `AspNetCoreModuleV2` module into IIS schema.
+> You **must** install the **Hosting Bundle**, not just the .NET SDK or .NET Runtime alone. The Hosting Bundle registers the native `AspNetCoreModuleV2` into the IIS schema.
 
-### 2. Restart IIS
-Open Command Prompt (CMD) as Administrator and execute:
+---
+
+### 3. Restart IIS Services
+Open **Command Prompt (CMD)** as Administrator and execute:
 ```cmd
 net stop was /y
 net start w3svc
@@ -142,7 +166,7 @@ graph TD
 ## Step 4: Secure the Endpoint for F5 BIG-IP Only
 
 1. In IIS Manager, select `HealthCheckSidecar`.
-2. Double-click **IP Address and Domain Restrictions**.
+2. Double-click **IP Address and Domain Restrictions** (*requires `Web-IP-Security` feature*).
 3. Click **Add Allow Entry...** and add your BIG-IP Self-IP addresses.
 4. Click **Edit Feature Settings...** and set **Access for unspecified clients** to `Forbidden` or `Abort`.
 
