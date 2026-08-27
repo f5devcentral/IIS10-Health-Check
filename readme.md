@@ -16,7 +16,7 @@ Ensure the following IIS features are installed via **Server Manager** or **Powe
 | :--- | :--- | :--- | :--- |
 | **Web Server Core** | `Web-Server`, `Web-WebServer` | **Required** | Core IIS 10 HTTP hosting engine. |
 | **App Development** | `Web-ISAPI-Ext`, `Web-ISAPI-Filter` | **Required** | Native module handlers required by `AspNetCoreModuleV2`. |
-| **Web Security** | `Web-IP-Security` (*IP and Domain Restrictions*) | **Recommended** | Restricts Port 8080 access strictly to F5 BIG-IP Self-IP addresses. |
+| **Web Security** | `Web-IP-Security` (*IP and Domain Restrictions*) | **Recommended** | Restricts sidecar port access (default: 8080) strictly to F5 BIG-IP Self-IP addresses. |
 | **Web Security** | `Web-Filtering` (*Request Filtering*) | **Recommended** | Restricts unneeded HTTP verbs and dangerous request payloads. |
 | **Diagnostics** | `Web-Http-Logging`, `Web-Http-Errors` | **Recommended** | Standard HTTP error handling and request logging. |
 | **Management** | `Web-Mgmt-Console` (*IIS Management Console*) | **Recommended** | GUI management console (`inetmgr`). |
@@ -133,8 +133,11 @@ graph TD
 2. **Site name:** `HealthCheckSidecar`
 3. **Application pool:** `HealthCheckPool`
 4. **Physical path:** `C:\inetpub\HealthCheckSidecar`
-5. **Binding:** Set Port to `8080` (or your dedicated management port).
+5. **Binding:** Set Port to `8080` (recommended default, or any available custom port like `8081` if `8080` is in use).
 6. Click **OK**.
+
+> [!NOTE]
+> **Port Selection Flexibility**: Port `8080` is documented as the recommended default. If port `8080` is already in use by another application on your server, simply assign any available port (such as `8081`, `8088`, or `9090`) in IIS Manager and configure the matching port in BIG-IP as the **Alias Service Port**.
 
 ---
 
@@ -205,7 +208,7 @@ Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recog
 
 ## Monitor with BIG-IP
 
-When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your health check sidecar is hosted on port 8080, you configure the BIG-IP health monitor to use an **Alias Service Port**. This instructs BIG-IP: *"Send production client traffic to port 80/443, but always send active health probes to port 8080."*
+When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your health check sidecar is hosted on port 8080 (or your chosen custom port), you configure the BIG-IP health monitor to use an **Alias Service Port**. This instructs BIG-IP: *"Send production client traffic to port 80/443, but always send active health probes to port 8080 (or your configured sidecar port)."*
 
 ```mermaid
 sequenceDiagram
@@ -216,7 +219,7 @@ sequenceDiagram
     
     rect rgb(240, 248, 255)
     note right of F5: Active Monitoring Channel
-    F5->>IIS: Health Probe (Port 8080 GET /api/health)
+    F5->>IIS: Health Probe (Sidecar Port GET /api/health)
     IIS-->>F5: HTTP/1.1 200 OK (Healthy)
     end
 
@@ -229,17 +232,17 @@ sequenceDiagram
 
 ### Step-by-Step BIG-IP Health Monitor Setup
 
-#### Step 1: Create the Custom Port 8080 Monitor
+#### Step 1: Create the Custom Sidecar Monitor
 1. Log in to the **BIG-IP Configuration Utility (GUI)**.
 2. Navigate on the left menu to: **Local Traffic** ➡️ **Monitors**.
 3. Click the **Create...** button in the upper-right corner.
 4. Configure the settings precisely as follows:
-   * **Name**: `mon_iis10_sidecar_8080`
+   * **Name**: `mon_iis10_sidecar_8080` (or `mon_iis10_sidecar_<port>`)
    * **Type**: `HTTP`
    * **Send String**: `GET /api/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`
    * **Receive String**: `200 OK`
    * **Alias Address**: `* All Addresses` (wildcard automatically targets each pool member's IP address)
-   * **Alias Service Port**: `8080`
+   * **Alias Service Port**: `8080` (or set to your custom IIS sidecar port, e.g. `8081`)
 5. Click **Finished** to save the monitor.
 
 ![BIG-IP Monitor Settings](settings.png)
