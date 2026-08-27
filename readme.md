@@ -1,11 +1,57 @@
 # IIS 10 Health Check Sidecar (.NET 8 Web API)
 
-A lightweight, self-contained **ASP.NET Core (.NET 8) Web API** sidecar application designed to monitor Windows Server CPU and memory metrics in real-time and provide endpoint status probes (`/api/health`) for load balancers such as **F5 BIG-IP**.
+A lightweight, high-performance **ASP.NET Core (.NET 8) Web API** sidecar application designed for Windows Server & IIS 10 environments. It continuously monitors underlying host OS health and delivers real-time health status probes (`/api/health`) for load balancers such as **F5 BIG-IP**.
+
+---
+
+## Executive Overview
+
+### 💡 What It Is
+The **IIS 10 Health Check Sidecar** is a dedicated management microservice hosted alongside your production IIS web applications (typically bound to an isolated management port such as `8080`). It exposes clean HTTP status endpoints (`200 OK` vs. `503 Service Unavailable`) and structured JSON health metrics designed specifically for F5 BIG-IP LTM health monitors.
+
+### ❓ Why It Is Needed
+Traditional load balancer health monitors probe only the web application's root URL (e.g., `GET /`). While this confirms that IIS can serve a basic static page, it creates major operational blind spots in production:
+* **The "CPU Exhaustion" Blind Spot**: A web server running at 100% CPU will continue responding to simple HTTP pings, but will stall or time out when real users attempt complex application requests.
+* **The "Thread Deadlock" Blind Spot**: When backend database connection pools exhaust or worker threads deadlock, CPU usage might remain deceptively low (15–20%), while incoming requests pile up in `http.sys`. Standard HTTP monitors fail to detect this hanging queue.
+* **The "Disk Crash" Blind Spot**: Out-of-disk conditions on `C:\` cause IIS logging to stall, temporary ASP.NET Core compilations to fail, and AppPool worker processes to crash unexpectedly.
+
+**The Solution**: By deploying this health check sidecar, F5 BIG-IP evaluates **real-time system resource health** before routing client traffic to a node. If any host resource crosses its safe operating threshold, the sidecar returns `HTTP 503`, allowing BIG-IP to gracefully drain traffic from the saturated node *before* end-users experience errors or outages.
+
+### ⚙️ How It Works
+1. **Background Resource Sampler**: An ASP.NET Core `BackgroundService` (`MetricsCollectorService`) samples Windows OS metrics every 1 second in a non-blocking background thread using native Windows Win32 P/Invoke APIs (`kernel32.dll`), `DriveInfo`, and `PerformanceCounter`.
+2. **Configurable Thresholds & Toggles**: Administrators can selectively enable or disable individual health checks and tune threshold limits in `appsettings.json`.
+3. **Automated Health Evaluation**: When F5 BIG-IP sends an HTTP probe (`GET /api/health`), the endpoint compares current samples against configured thresholds:
+   * **All Enabled Checks Pass**: Returns `HTTP 200 OK` with JSON metrics.
+   * **Any Threshold Breached**: Returns `HTTP 503 Service Unavailable` with a detailed failure reason.
+
+---
+
+### 📊 Monitored Metrics
+
+Administrators can independently enable, disable, and configure thresholds for the following key metrics in `appsettings.json`:
+
+* 🖥️ **CPU Usage (`MaxCpuPercentage`)**:
+  * **How it works**: Uses Windows native `GetSystemTimes` Win32 kernel API to calculate total host CPU utilization across all cores.
+  * **Default Threshold**: `85.0%` max CPU.
+* 🧠 **System Memory / RAM (`MaxMemoryPercentage`)**:
+  * **How it works**: Uses Windows native `GlobalMemoryStatusEx` Win32 API to measure physical RAM consumption across the Windows host.
+  * **Default Threshold**: `90.0%` max RAM.
+* 💾 **Free Disk Space (`MinDiskSpacePercentage`)**:
+  * **How it works**: Uses .NET `DriveInfo` to measure remaining free disk space percentage on the system drive (`C:\`).
+  * **Default Threshold**: `10.0%` min free space remaining.
+* 🚦 **IIS Request Queue Length (`MaxQueueLength`)**:
+  * **How it works**: Queries the Windows Performance Counter (`HTTP Service Request Queues\CurrentQueueSize`) for your application's IIS AppPool to measure requests queued in `http.sys`.
+  * **Default Threshold**: `50` max queued requests.
 
 ---
 
 ## Table of Contents
 
+- [Executive Overview](#executive-overview)
+  - [What It Is](#-what-it-is)
+  - [Why It Is Needed](#-why-it-is-needed)
+  - [How It Works](#%EF%B8%8F-how-it-works)
+  - [Monitored Metrics](#-monitored-metrics)
 - [Prerequisites (What to Install First)](#prerequisites-what-to-install-first)
   - [1. IIS Server Role Features](#1-iis-server-role-features)
   - [2. Install the .NET 8 Hosting Bundle](#2-install-the-net-8-hosting-bundle)
