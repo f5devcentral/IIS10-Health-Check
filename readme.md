@@ -101,7 +101,7 @@ This compiles `HealthCheckSidecar.dll` and outputs all required runtime assets t
 
 ## Step 1: Configuration (`appsettings.json`)
 
-Edit `appsettings.json` in your deployment directory to customize resource thresholds:
+Edit `appsettings.json` in your deployment directory to select which metrics to monitor and customize resource thresholds:
 
 ```json
 {
@@ -113,6 +113,10 @@ Edit `appsettings.json` in your deployment directory to customize resource thres
   },
   "AllowedHosts": "*",
   "HealthThresholds": {
+    "EnableCpuCheck": true,
+    "EnableMemoryCheck": true,
+    "EnableDiskCheck": true,
+    "EnableQueueCheck": true,
     "MaxCpuPercentage": 85.0,
     "MaxMemoryPercentage": 90.0,
     "TotalSystemRamGb": 16.0,
@@ -123,6 +127,13 @@ Edit `appsettings.json` in your deployment directory to customize resource thres
 }
 ```
 
+### Toggle Switches (Enable / Disable Checks)
+* **EnableCpuCheck**: Set to `true` to monitor CPU usage (`false` to disable).
+* **EnableMemoryCheck**: Set to `true` to monitor RAM usage (`false` to disable).
+* **EnableDiskCheck**: Set to `true` to monitor free disk space (`false` to disable).
+* **EnableQueueCheck**: Set to `true` to monitor IIS HTTP request queue size (`false` to disable).
+
+### Threshold Settings
 * **MaxCpuPercentage**: HTTP 503 is returned if server CPU usage exceeds this threshold (e.g. `85.0`%).
 * **MaxMemoryPercentage**: HTTP 503 is returned if server Memory usage exceeds this threshold (e.g. `90.0`%).
 * **MinDiskSpacePercentage**: HTTP 503 is returned if system drive (`C:`) free disk space falls below this threshold (e.g. `10.0`%).

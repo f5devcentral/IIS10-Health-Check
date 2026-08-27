@@ -15,22 +15,25 @@ builder.Services.AddSingleton<IMetricsService>(sp => sp.GetRequiredService<Metri
 var app = builder.Build();
 
 // Health check endpoint handler
-var healthHandler = (IMetricsService metricsService, HttpResponse response) =>
+var healthHandler = (IMetricsService metricsService, Microsoft.Extensions.Options.IOptions<HealthOptions> optionsAccessor, HttpResponse response) =>
 {
     bool isHealthy = metricsService.IsHealthy(out string statusReason);
+    var options = optionsAccessor.Value;
 
     response.StatusCode = isHealthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
     response.ContentType = "application/json";
 
-    var payload = new
+    var payload = new Dictionary<string, object>
     {
-        status = isHealthy ? "Healthy" : "Unhealthy",
-        cpu = $"{metricsService.CurrentCpuPercentage:F1}%",
-        memory = $"{metricsService.CurrentMemoryPercentage:F1}%",
-        diskFree = $"{metricsService.CurrentDiskSpacePercentage:F1}%",
-        queueLength = (int)metricsService.CurrentQueueLength,
-        reason = statusReason
+        ["status"] = isHealthy ? "Healthy" : "Unhealthy"
     };
+
+    if (options.EnableCpuCheck) payload["cpu"] = $"{metricsService.CurrentCpuPercentage:F1}%";
+    if (options.EnableMemoryCheck) payload["memory"] = $"{metricsService.CurrentMemoryPercentage:F1}%";
+    if (options.EnableDiskCheck) payload["diskFree"] = $"{metricsService.CurrentDiskSpacePercentage:F1}%";
+    if (options.EnableQueueCheck) payload["queueLength"] = (int)metricsService.CurrentQueueLength;
+
+    payload["reason"] = statusReason;
 
     return Results.Json(payload, statusCode: response.StatusCode);
 };

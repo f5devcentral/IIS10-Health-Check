@@ -40,10 +40,10 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
     public bool IsHealthy(out string statusReason)
     {
         var options = _options.CurrentValue;
-        bool cpuBreached = CurrentCpuPercentage > options.MaxCpuPercentage;
-        bool memBreached = CurrentMemoryPercentage > options.MaxMemoryPercentage;
-        bool diskBreached = CurrentDiskSpacePercentage < options.MinDiskSpacePercentage;
-        bool queueBreached = CurrentQueueLength > options.MaxQueueLength;
+        bool cpuBreached = options.EnableCpuCheck && CurrentCpuPercentage > options.MaxCpuPercentage;
+        bool memBreached = options.EnableMemoryCheck && CurrentMemoryPercentage > options.MaxMemoryPercentage;
+        bool diskBreached = options.EnableDiskCheck && CurrentDiskSpacePercentage < options.MinDiskSpacePercentage;
+        bool queueBreached = options.EnableQueueCheck && CurrentQueueLength > options.MaxQueueLength;
 
         var breaches = new List<string>();
         if (cpuBreached) breaches.Add($"CPU: {CurrentCpuPercentage:F1}% > {options.MaxCpuPercentage}%");
@@ -80,18 +80,34 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
 
     private void CollectMetrics()
     {
-        CurrentDiskSpacePercentage = GetSystemDiskSpaceUsage();
+        var options = _options.CurrentValue;
+
+        if (options.EnableDiskCheck)
+        {
+            CurrentDiskSpacePercentage = GetSystemDiskSpaceUsage();
+        }
 
         if (OperatingSystem.IsWindows())
         {
-            CurrentCpuPercentage = GetWindowsSystemCpuUsage();
-            CurrentMemoryPercentage = GetWindowsSystemMemoryUsage();
-            CurrentQueueLength = GetWindowsRequestQueueLength();
+            if (options.EnableCpuCheck)
+            {
+                CurrentCpuPercentage = GetWindowsSystemCpuUsage();
+            }
+
+            if (options.EnableMemoryCheck)
+            {
+                CurrentMemoryPercentage = GetWindowsSystemMemoryUsage();
+            }
+
+            if (options.EnableQueueCheck)
+            {
+                CurrentQueueLength = GetWindowsRequestQueueLength();
+            }
         }
         else
         {
-            CurrentCpuPercentage = GetFallbackCpuUsage();
-            CurrentMemoryPercentage = GetFallbackMemoryUsage();
+            CurrentCpuPercentage = options.EnableCpuCheck ? GetFallbackCpuUsage() : 0.0;
+            CurrentMemoryPercentage = options.EnableMemoryCheck ? GetFallbackMemoryUsage() : 0.0;
             CurrentQueueLength = 0;
         }
     }
