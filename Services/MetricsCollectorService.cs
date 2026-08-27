@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using HealthCheckSidecar.Models;
 using Microsoft.Extensions.Options;
@@ -9,6 +10,8 @@ public interface IMetricsService
 {
     double CurrentCpuPercentage { get; }
     double CurrentMemoryPercentage { get; }
+    double CurrentDiskSpacePercentage { get; }
+    double CurrentQueueLength { get; }
     bool IsHealthy(out string statusReason);
 }
 
@@ -25,6 +28,8 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
 
     public double CurrentCpuPercentage { get; private set; }
     public double CurrentMemoryPercentage { get; private set; }
+    public double CurrentDiskSpacePercentage { get; private set; } = 100.0;
+    public double CurrentQueueLength { get; private set; }
 
     public MetricsCollectorService(ILogger<MetricsCollectorService> logger, IOptionsMonitor<HealthOptions> options)
     {
@@ -37,10 +42,18 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
         var options = _options.CurrentValue;
         bool cpuBreached = CurrentCpuPercentage > options.MaxCpuPercentage;
         bool memBreached = CurrentMemoryPercentage > options.MaxMemoryPercentage;
+        bool diskBreached = CurrentDiskSpacePercentage < options.MinDiskSpacePercentage;
+        bool queueBreached = CurrentQueueLength > options.MaxQueueLength;
 
-        if (cpuBreached || memBreached)
+        var breaches = new List<string>();
+        if (cpuBreached) breaches.Add($"CPU: {CurrentCpuPercentage:F1}% > {options.MaxCpuPercentage}%");
+        if (memBreached) breaches.Add($"Memory: {CurrentMemoryPercentage:F1}% > {options.MaxMemoryPercentage}%");
+        if (diskBreached) breaches.Add($"Disk Free: {CurrentDiskSpacePercentage:F1}% < {options.MinDiskSpacePercentage}%");
+        if (queueBreached) breaches.Add($"HTTP Queue Length: {CurrentQueueLength:F0} > {options.MaxQueueLength}");
+
+        if (breaches.Count > 0)
         {
-            statusReason = $"Threshold breached (Max CPU: {options.MaxCpuPercentage}%, Max Mem: {options.MaxMemoryPercentage}%)";
+            statusReason = $"Threshold breached ({string.Join("; ", breaches)})";
             return false;
         }
 
@@ -67,16 +80,64 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
 
     private void CollectMetrics()
     {
+        CurrentDiskSpacePercentage = GetSystemDiskSpaceUsage();
+
         if (OperatingSystem.IsWindows())
         {
             CurrentCpuPercentage = GetWindowsSystemCpuUsage();
             CurrentMemoryPercentage = GetWindowsSystemMemoryUsage();
+            CurrentQueueLength = GetWindowsRequestQueueLength();
         }
         else
         {
             CurrentCpuPercentage = GetFallbackCpuUsage();
             CurrentMemoryPercentage = GetFallbackMemoryUsage();
+            CurrentQueueLength = 0;
         }
+    }
+
+    private double GetSystemDiskSpaceUsage()
+    {
+        try
+        {
+            var systemDrivePath = OperatingSystem.IsWindows()
+                ? Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.System)) ?? "C:\\"
+                : "/";
+
+            var drive = new DriveInfo(systemDrivePath);
+            if (drive.IsReady && drive.TotalSize > 0)
+            {
+                double percentFree = ((double)drive.AvailableFreeSpace / drive.TotalSize) * 100.0;
+                return Math.Round(percentFree, 1);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error reading system drive free space.");
+        }
+
+        return 100.0;
+    }
+
+    private double GetWindowsRequestQueueLength()
+    {
+        if (!OperatingSystem.IsWindows()) return 0;
+
+        try
+        {
+            var appPool = _options.CurrentValue.AppPoolName;
+            if (!string.IsNullOrWhiteSpace(appPool) && PerformanceCounterCategory.Exists("HTTP Service Request Queues"))
+            {
+                using var counter = new PerformanceCounter("HTTP Service Request Queues", "CurrentQueueSize", appPool, readOnly: true);
+                return Math.Round(counter.NextValue(), 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error reading HTTP Service Request Queues performance counter.");
+        }
+
+        return 0;
     }
 
     private double GetWindowsSystemCpuUsage()
@@ -207,3 +268,4 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
             out System.Runtime.InteropServices.ComTypes.FILETIME lpUserTime);
     }
 }
+

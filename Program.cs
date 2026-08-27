@@ -17,7 +17,7 @@ var app = builder.Build();
 // Health check endpoint handler
 var healthHandler = (IMetricsService metricsService, HttpResponse response) =>
 {
-    bool isHealthy = metricsService.IsHealthy(out string _);
+    bool isHealthy = metricsService.IsHealthy(out string statusReason);
 
     response.StatusCode = isHealthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
     response.ContentType = "application/json";
@@ -26,7 +26,10 @@ var healthHandler = (IMetricsService metricsService, HttpResponse response) =>
     {
         status = isHealthy ? "Healthy" : "Unhealthy",
         cpu = $"{metricsService.CurrentCpuPercentage:F1}%",
-        memory = $"{metricsService.CurrentMemoryPercentage:F1}%"
+        memory = $"{metricsService.CurrentMemoryPercentage:F1}%",
+        diskFree = $"{metricsService.CurrentDiskSpacePercentage:F1}%",
+        queueLength = (int)metricsService.CurrentQueueLength,
+        reason = statusReason
     };
 
     return Results.Json(payload, statusCode: response.StatusCode);

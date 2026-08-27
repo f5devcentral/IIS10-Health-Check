@@ -115,13 +115,19 @@ Edit `appsettings.json` in your deployment directory to customize resource thres
   "HealthThresholds": {
     "MaxCpuPercentage": 85.0,
     "MaxMemoryPercentage": 90.0,
-    "TotalSystemRamGb": 16.0
+    "TotalSystemRamGb": 16.0,
+    "MinDiskSpacePercentage": 10.0,
+    "MaxQueueLength": 50.0,
+    "AppPoolName": "HealthCheckPool"
   }
 }
 ```
 
 * **MaxCpuPercentage**: HTTP 503 is returned if server CPU usage exceeds this threshold (e.g. `85.0`%).
 * **MaxMemoryPercentage**: HTTP 503 is returned if server Memory usage exceeds this threshold (e.g. `90.0`%).
+* **MinDiskSpacePercentage**: HTTP 503 is returned if system drive (`C:`) free disk space falls below this threshold (e.g. `10.0`%).
+* **MaxQueueLength**: HTTP 503 is returned if IIS `http.sys` request queue length exceeds this count (e.g. `50`).
+* **AppPoolName**: Target IIS Application Pool name monitored for request queue size (e.g. `HealthCheckPool`).
 
 ---
 
@@ -171,15 +177,21 @@ graph TD
    {
        "status": "Healthy",
        "cpu": "12.4%",
-       "memory": "48.2%"
+       "memory": "48.2%",
+       "diskFree": "35.8%",
+       "queueLength": 0,
+       "reason": "Healthy"
    }
    ```
-3. If CPU or Memory exceeds thresholds, the endpoint automatically returns `HTTP 503 Service Unavailable`:
+3. If CPU, Memory, Disk Space, or Request Queue exceeds thresholds, the endpoint automatically returns `HTTP 503 Service Unavailable`:
    ```json
    {
        "status": "Unhealthy",
        "cpu": "89.1%",
-       "memory": "48.2%"
+       "memory": "48.2%",
+       "diskFree": "35.8%",
+       "queueLength": 0,
+       "reason": "Threshold breached (CPU: 89.1% > 85%)"
    }
    ```
 
