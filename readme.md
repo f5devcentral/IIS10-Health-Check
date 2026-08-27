@@ -208,7 +208,11 @@ Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recog
 
 ## Monitor with BIG-IP
 
-When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your health check sidecar is hosted on port 8080 (or your chosen custom port), you configure the BIG-IP health monitor to use an **Alias Service Port**. This instructs BIG-IP: *"Send production client traffic to port 80/443, but always send active health probes to port 8080 (or your configured sidecar port)."*
+When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your health check sidecar is hosted on port 8080 (or your chosen custom port), you configure the BIG-IP health monitor using an **Alias Service Port**. 
+
+For complete end-to-end reliability, it is recommended to use a **Dual-Monitor Strategy** on BIG-IP:
+* **Sidecar Probe (Port 8080)**: Monitors OS-level CPU and RAM performance.
+* **Application Probe (Port 80/443)**: Probes the actual web application endpoint to verify application layer health.
 
 ```mermaid
 sequenceDiagram
@@ -218,9 +222,11 @@ sequenceDiagram
     participant IIS as IIS 10 Server
     
     rect rgb(240, 248, 255)
-    note right of F5: Active Monitoring Channel
-    F5->>IIS: Health Probe (Sidecar Port GET /api/health)
-    IIS-->>F5: HTTP/1.1 200 OK (Healthy)
+    note right of F5: Active Monitoring Channel (Dual Probes)
+    F5->>IIS: Probe 1: OS Resource Probe (Port 8080 GET /api/health)
+    IIS-->>F5: HTTP/1.1 200 OK (CPU & Memory Healthy)
+    F5->>IIS: Probe 2: Web Application Probe (Port 80/443 GET /)
+    IIS-->>F5: HTTP/1.1 200 OK (Application Layer Healthy)
     end
 
     rect rgb(240, 255, 240)
@@ -229,6 +235,8 @@ sequenceDiagram
     F5->>IIS: Forward connection to Pool Member (Port 80/443)
     end
 ```
+
+---
 
 ### Step-by-Step BIG-IP Health Monitor Setup
 
@@ -247,18 +255,32 @@ sequenceDiagram
 
 ![BIG-IP Monitor Settings](settings.png)
 
-#### Step 2: Apply the Monitor to Your Production Pool
-1. Navigate on the left menu to: **Local Traffic** ➡️ **Pools** ➡️ **Pool List**.
-2. Click on your active web application pool (the pool containing your IIS members listening on Port 80 or 443).
+#### Step 2: Apply Dual Monitors to Your Production Pool
+
+> [!TIP]
+> **Best Practice — Recommended Dual-Monitor Strategy**:
+> Combining the IIS Health Check sidecar monitor with a standard application health monitor ensures complete coverage:
+> 1. **Server OS Health Monitor** (`mon_iis10_sidecar_8080`): Ensures the Windows Server host has sufficient CPU and RAM headroom.
+> 2. **Application Health Monitor** (`mon_http_app` / `mon_https_app`): Ensures the web application on Port 80/443 is active, responsive, and serving healthy HTTP responses.
+>
+> Requiring **both** monitors to pass guarantees client traffic is routed only to servers that are both **physically healthy** and **functionally healthy**.
+
+1. Navigate in BIG-IP to: **Local Traffic** ➡️ **Pools** ➡️ **Pool List**.
+2. Click on your active web application pool (containing your IIS members listening on Port 80 or 443).
 3. On the **Properties** tab, locate the **Health Monitors** section.
-4. In the **Available** list, select `mon_iis10_sidecar_8080` and click the **<< (Add)** button to move it into the **Active** list.
-5. Click **Update** at the bottom of the page.
+4. In the **Available** list, select **both** monitors:
+   * `mon_iis10_sidecar_8080` (OS CPU/RAM sidecar monitor)
+   * `mon_http` / `mon_https_app_check` (Application endpoint monitor)
+5. Click the **<< (Add)** button to move both monitors into the **Active** list.
+6. Verify **Availability Requirement** is set to **All** (default `AND` rule, requiring both monitors to pass).
+7. Click **Update** at the bottom of the page.
 
 ---
 
-### Threshold Breach Behavior
+### Failover & Outage Behavior
 
-If the CPU or Memory threshold is breached:
-1. The background service registers the high resource consumption.
-2. The probe on Port `8080` receives `HTTP/1.1 503 Service Unavailable`.
-3. BIG-IP marks the pool member down and reroutes production traffic away from the overloaded server.
+When utilizing dual health monitors on a BIG-IP pool member:
+
+* **Resource Threshold Breach (High CPU/RAM)**: The sidecar probe on Port `8080` receives `HTTP 503 Service Unavailable`. BIG-IP marks the member down, protecting the server from crashing under load spikes.
+* **Application Failure (App Crash / DB Down)**: The application probe on Port `80/443` receives an `HTTP 50x` error or connection timeout. BIG-IP marks the member down, preventing users from experiencing broken application pages.
+* **Member Health Standard**: Production traffic is forwarded to a pool member **only when both probes pass** (`HTTP 200 OK`), providing complete end-to-end fault tolerance.
