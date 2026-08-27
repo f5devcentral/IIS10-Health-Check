@@ -16,9 +16,12 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
 {
     private readonly ILogger<MetricsCollectorService> _logger;
     private readonly IOptionsMonitor<HealthOptions> _options;
-    private PerformanceCounter? _cpuCounter;
-    private DateTime _lastCpuTime = DateTime.UtcNow;
-    private TimeSpan _lastTotalProcessorTime;
+
+    // Windows P/Invoke CPU tracking fields
+    private long _prevIdleTicks;
+    private long _prevKernelTicks;
+    private long _prevUserTicks;
+    private bool _hasPrevCpuSample;
 
     public double CurrentCpuPercentage { get; private set; }
     public double CurrentMemoryPercentage { get; private set; }
@@ -27,20 +30,6 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
     {
         _logger = logger;
         _options = options;
-        _lastTotalProcessorTime = Process.GetCurrentProcess().TotalProcessorTime;
-
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-                _cpuCounter.NextValue(); // First call initializes the counter
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to initialize Windows PerformanceCounter for Processor CPU Time.");
-            }
-        }
     }
 
     public bool IsHealthy(out string statusReason)
@@ -78,56 +67,90 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
 
     private void CollectMetrics()
     {
-        // 1. Collect CPU Percentage
-        if (OperatingSystem.IsWindows() && _cpuCounter != null)
+        if (OperatingSystem.IsWindows())
         {
-            try
-            {
-                CurrentCpuPercentage = Math.Round(_cpuCounter.NextValue(), 1);
-            }
-            catch
-            {
-                CurrentCpuPercentage = CalculateProcessCpuUsage();
-            }
+            CurrentCpuPercentage = GetWindowsSystemCpuUsage();
+            CurrentMemoryPercentage = GetWindowsSystemMemoryUsage();
         }
         else
         {
-            CurrentCpuPercentage = CalculateProcessCpuUsage();
+            CurrentCpuPercentage = GetFallbackCpuUsage();
+            CurrentMemoryPercentage = GetFallbackMemoryUsage();
         }
-
-        // 2. Collect Memory Percentage
-        CurrentMemoryPercentage = CalculateMemoryUsage();
     }
 
-    private double CalculateProcessCpuUsage()
+    private double GetWindowsSystemCpuUsage()
     {
         try
         {
-            var now = DateTime.UtcNow;
-            var proc = Process.GetCurrentProcess();
-            var totalTime = proc.TotalProcessorTime;
-
-            var timeWindow = (now - _lastCpuTime).TotalMilliseconds;
-            var cpuWindow = (totalTime - _lastTotalProcessorTime).TotalMilliseconds;
-
-            _lastCpuTime = now;
-            _lastTotalProcessorTime = totalTime;
-
-            if (timeWindow > 0)
+            if (NativeMethods.GetSystemTimes(out var idleTime, out var kernelTime, out var userTime))
             {
-                double usage = (cpuWindow / (timeWindow * Environment.ProcessorCount)) * 100.0;
-                return Math.Round(Math.Min(100.0, Math.Max(0.0, usage)), 1);
+                long idleTicks = ToTicks(idleTime);
+                long kernelTicks = ToTicks(kernelTime);
+                long userTicks = ToTicks(userTime);
+
+                if (_hasPrevCpuSample)
+                {
+                    long idleDiff = idleTicks - _prevIdleTicks;
+                    long kernelDiff = kernelTicks - _prevKernelTicks;
+                    long userDiff = userTicks - _prevUserTicks;
+
+                    long totalDiff = kernelDiff + userDiff;
+                    long busyDiff = totalDiff - idleDiff;
+
+                    if (totalDiff > 0)
+                    {
+                        double cpu = ((double)busyDiff / totalDiff) * 100.0;
+                        _prevIdleTicks = idleTicks;
+                        _prevKernelTicks = kernelTicks;
+                        _prevUserTicks = userTicks;
+                        return Math.Round(Math.Min(100.0, Math.Max(0.0, cpu)), 1);
+                    }
+                }
+
+                _prevIdleTicks = idleTicks;
+                _prevKernelTicks = kernelTicks;
+                _prevUserTicks = userTicks;
+                _hasPrevCpuSample = true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore fallback errors
+            _logger.LogDebug(ex, "Error reading Windows GetSystemTimes.");
         }
 
+        return GetFallbackCpuUsage();
+    }
+
+    private double GetWindowsSystemMemoryUsage()
+    {
+        try
+        {
+            var memStatus = new NativeMethods.MEMORYSTATUSEX();
+            if (NativeMethods.GlobalMemoryStatusEx(ref memStatus))
+            {
+                if (memStatus.ullTotalPhys > 0)
+                {
+                    double used = memStatus.ullTotalPhys - memStatus.ullAvailPhys;
+                    double percent = (used / memStatus.ullTotalPhys) * 100.0;
+                    return Math.Round(percent, 1);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error reading Windows GlobalMemoryStatusEx.");
+        }
+
+        return GetFallbackMemoryUsage();
+    }
+
+    private double GetFallbackCpuUsage()
+    {
         return 0.0;
     }
 
-    private double CalculateMemoryUsage()
+    private double GetFallbackMemoryUsage()
     {
         try
         {
@@ -137,26 +160,50 @@ public class MetricsCollectorService : BackgroundService, IMetricsService
                 double percentage = ((double)info.MemoryLoadBytes / info.TotalAvailableMemoryBytes) * 100.0;
                 return Math.Round(percentage, 1);
             }
-
-            // Fallback using Process WorkingSet vs Configured RAM
-            var workingSet = Process.GetCurrentProcess().WorkingSet64;
-            double configuredRamBytes = _options.CurrentValue.TotalSystemRamGb * 1024 * 1024 * 1024;
-            if (configuredRamBytes > 0)
-            {
-                return Math.Round((workingSet / configuredRamBytes) * 100.0, 1);
-            }
         }
         catch
         {
-            // Ignore fallback errors
+            // Ignore
         }
 
         return 0.0;
     }
 
-    public override void Dispose()
+    private static long ToTicks(System.Runtime.InteropServices.ComTypes.FILETIME fileTime)
     {
-        _cpuCounter?.Dispose();
-        base.Dispose();
+        return ((long)fileTime.dwHighDateTime << 32) + (uint)fileTime.dwLowDateTime;
+    }
+
+    private static class NativeMethods
+    {
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        public struct MEMORYSTATUSEX
+        {
+            public uint dwLength;
+            public uint dwMemoryLoad;
+            public ulong ullTotalPhys;
+            public ulong ullAvailPhys;
+            public ulong ullTotalPageFile;
+            public ulong ullAvailPageFile;
+            public ulong ullTotalVirtual;
+            public ulong ullAvailVirtual;
+            public ulong ullAvailExtendedVirtual;
+
+            public MEMORYSTATUSEX()
+            {
+                dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+            }
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetSystemTimes(
+            out System.Runtime.InteropServices.ComTypes.FILETIME lpIdleTime,
+            out System.Runtime.InteropServices.ComTypes.FILETIME lpKernelTime,
+            out System.Runtime.InteropServices.ComTypes.FILETIME lpUserTime);
     }
 }
