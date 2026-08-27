@@ -21,10 +21,10 @@ A lightweight, high-performance **ASP.NET Core (.NET 8) Web API** sidecar applic
 - [Step 2: Configure the Sidecar Site in IIS 10](#step-2-configure-the-sidecar-site-in-iis-10)
 - [Step 3: Test and Verify Locally](#step-3-test-and-verify-locally)
 - [Step 4: Secure the Endpoint for F5 BIG-IP Only](#step-4-secure-the-endpoint-for-f5-big-ip-only)
-- [Troubleshooting Guide](#troubleshooting-guide)
 - [Monitor with BIG-IP](#monitor-with-big-ip)
   - [Step-by-Step BIG-IP Health Monitor Setup](#step-by-step-big-ip-health-monitor-setup)
   - [Failover & Outage Behavior](#failover--outage-behavior)
+- [Troubleshooting Guide](#troubleshooting-guide)
 
 ---
 
@@ -263,37 +263,6 @@ graph TD
 
 ---
 
-## Troubleshooting Guide
-
-### ❌ `HTTP Error 500.19 - Internal Server Error` (Error Code `0x8007000d`)
-
-```text
-Module: IIS Web Core
-Error Code: 0x8007000d
-Config File: \\?\C:\inetpub\HealthCheckSidecar\web.config
-```
-
-#### Cause
-Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recognize the `<aspNetCore>` section in `web.config`. This happens when the **.NET Core Hosting Bundle** (`AspNetCoreModuleV2`) is not installed on the Windows Server, or IIS was not restarted after installation.
-
-#### Resolution Steps
-1. **Install .NET Core Hosting Bundle**:
-   - Download and run the [.NET 8.0 Hosting Bundle Installer](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
-2. **Restart IIS Services**:
-   - Open Command Prompt as Administrator and run:
-     ```cmd
-     net stop was /y
-     net start w3svc
-     ```
-3. **Verify Module Registration**:
-   - Open PowerShell as Administrator and run:
-     ```powershell
-     Get-WebGlobalModule | Where-Object { $_.Name -eq "AspNetCoreModuleV2" }
-     ```
-   - If registered, refresh the site in IIS Manager. The 500.19 error will be resolved.
-
----
-
 ## Monitor with BIG-IP
 
 When your backend application servers run on web ports (such as HTTP 80, HTTPS 443, or a custom application port), but your health check sidecar is hosted on port 8080 (or your chosen custom management port), you configure the BIG-IP health monitor using an **Alias Service Port**. 
@@ -372,3 +341,34 @@ When utilizing dual health monitors on a BIG-IP pool member:
 * **Resource Threshold Breach (High CPU/RAM)**: The sidecar probe on Port `8080` (or custom sidecar port) receives `HTTP 503 Service Unavailable`. BIG-IP marks the member down, protecting the server from crashing under load spikes.
 * **Application Failure (App Crash / DB Down)**: The application probe on the application port (e.g., `80`, `443`, or custom app port) receives an `HTTP 50x` error or connection timeout. BIG-IP marks the member down, preventing users from experiencing broken application pages.
 * **Member Health Standard**: Production traffic is forwarded to a pool member **only when both probes pass** (`HTTP 200 OK`), providing complete end-to-end fault tolerance.
+
+---
+
+## Troubleshooting Guide
+
+### ❌ `HTTP Error 500.19 - Internal Server Error` (Error Code `0x8007000d`)
+
+```text
+Module: IIS Web Core
+Error Code: 0x8007000d
+Config File: \\?\C:\inetpub\HealthCheckSidecar\web.config
+```
+
+#### Cause
+Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recognize the `<aspNetCore>` section in `web.config`. This happens when the **.NET Core Hosting Bundle** (`AspNetCoreModuleV2`) is not installed on the Windows Server, or IIS was not restarted after installation.
+
+#### Resolution Steps
+1. **Install .NET Core Hosting Bundle**:
+   - Download and run the [.NET 8.0 Hosting Bundle Installer](https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
+2. **Restart IIS Services**:
+   - Open Command Prompt as Administrator and run:
+     ```cmd
+     net stop was /y
+     net start w3svc
+     ```
+3. **Verify Module Registration**:
+   - Open PowerShell as Administrator and run:
+     ```powershell
+     Get-WebGlobalModule | Where-Object { $_.Name -eq "AspNetCoreModuleV2" }
+     ```
+   - If registered, refresh the site in IIS Manager. The 500.19 error will be resolved.
