@@ -205,7 +205,7 @@ Error Code `0x8007000d` (`ERROR_INVALID_DATA`) occurs because IIS does not recog
 
 ## Monitor with BIG-IP
 
-Configure an **Alias Service Port** (`8080`) monitor on BIG-IP:
+When your backend application servers run on standard web ports (such as HTTP 80 or HTTPS 443), but your health check sidecar is hosted on port 8080, you configure the BIG-IP health monitor to use an **Alias Service Port**. This instructs BIG-IP: *"Send production client traffic to port 80/443, but always send active health probes to port 8080."*
 
 ```mermaid
 sequenceDiagram
@@ -226,6 +226,34 @@ sequenceDiagram
     F5->>IIS: Forward connection to Pool Member (Port 80/443)
     end
 ```
+
+### Step-by-Step BIG-IP Health Monitor Setup
+
+#### Step 1: Create the Custom Port 8080 Monitor
+1. Log in to the **BIG-IP Configuration Utility (GUI)**.
+2. Navigate on the left menu to: **Local Traffic** ➡️ **Monitors**.
+3. Click the **Create...** button in the upper-right corner.
+4. Configure the settings precisely as follows:
+   * **Name**: `mon_iis10_sidecar_8080`
+   * **Type**: `HTTP`
+   * **Send String**: `GET /api/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`
+   * **Receive String**: `200 OK`
+   * **Alias Address**: `* All Addresses` (wildcard automatically targets each pool member's IP address)
+   * **Alias Service Port**: `8080`
+5. Click **Finished** to save the monitor.
+
+![BIG-IP Monitor Settings](settings.png)
+
+#### Step 2: Apply the Monitor to Your Production Pool
+1. Navigate on the left menu to: **Local Traffic** ➡️ **Pools** ➡️ **Pool List**.
+2. Click on your active web application pool (the pool containing your IIS members listening on Port 80 or 443).
+3. On the **Properties** tab, locate the **Health Monitors** section.
+4. In the **Available** list, select `mon_iis10_sidecar_8080` and click the **<< (Add)** button to move it into the **Active** list.
+5. Click **Update** at the bottom of the page.
+
+---
+
+### Threshold Breach Behavior
 
 If the CPU or Memory threshold is breached:
 1. The background service registers the high resource consumption.
